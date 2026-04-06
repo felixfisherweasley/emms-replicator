@@ -1,0 +1,79 @@
+database:
+  type: duckdb
+  path: ~/mms/mms.duckdb
+
+tables:
+  - DISPATCHPRICE
+  # - DISPATCHLOAD
+  - DISPATCHREGIONSUM
+  - TRADINGPRICE
+  # - TRADINGREGIONSUM
+  - DUDETAIL
+  - DUDETAILSUMMARY
+  - DISPATCHINTERCONNECTORRES
+  # - TRADINGINTERCONNECT
+  - TRANSMISSIONLOSSFACTOR
+  - ROOFTOP_PV_ACTUAL
+  # - ROOFTOP_PV_FORECAST
+
+sources:
+  current: https://nemweb.com.au/Reports/Current/
+  archive: https://nemweb.com.au/Reports/ARCHIVE/
+  data_archive_base: https://nemweb.com.au/Data_Archive/Wholesale_Electricity/MMSDM/
+
+data_directory: ./data
+log_directory: ./logs
+tracking_file: ./data/loaded_tracking.csv
+
+batcher:
+  download_dir: ./data/downloads
+  extract_dir: ./data/extracted
+  start_year: 2020
+  end_year: 2025
+  months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+
+loader:
+  scan_dir: ./data/extracted
+  processed_dir: ./data/processed
+
+# Optional table model metadata for key/index creation on first table creation.
+# Fill these from the AEMO data model report.
+table_model:
+  DISPATCHPRICE:
+    primary_key: [SETTLEMENTDATE, RUNNO, REGIONID, DISPATCHINTERVAL, INTERVENTION]
+    indexes:
+      - name: idx_dispatchprice_settlementdate
+        columns: [LASTCHANGED]
+  DISPATCHREGIONSUM:
+    primary_key: [SETTLEMENTDATE, RUNNO, REGIONID, DISPATCHINTERVAL, INTERVENTION]
+    indexes:
+      - name: idx_dispatchregionsum_settlementdate
+        columns: [LASTCHANGED]
+  TRADINGPRICE:
+    primary_key: [SETTLEMENTDATE, RUNNO, REGIONID, PERIODID]
+    indexes:
+      - name: idx_tradingprice_settlementdate
+        columns: [LASTCHANGED]
+  DUDETAIL:
+    primary_key: [DUID, EFFECTIVEDATE, VERSIONNO]
+    indexes:
+      - columns: [LASTCHANGED]
+  DUDETAILSUMMARY:
+    primary_key: [DUID, START_DATE]
+    indexes:
+      - columns: [LASTCHANGED]
+  DISPATCHINTERCONNECTORRES:
+    primary_key: [SETTLEMENTDATE, RUNNO, INTERCONNECTORID, INTERVENTION, DISPATCHINTERVAL]
+    indexes:
+      - name: idx_dispatchinterconnectorres_settlementdate
+        columns: [LASTCHANGED]  
+  TRANSMISSIONLOSSFACTOR:
+    primary_key: [CONNECTIONPOINTID, EFFECTIVEDATE, VERSIONNO]
+    indexes:
+      - name: idx_transmissionlossfactor_settlementdate
+        columns: [LASTCHANGED]
+  ROOFTOP_PV_ACTUAL:
+    primary_key: [INTERVAL_DATETIME, TYPE, REGIONID]
+    indexes:
+      - name: idx_rooftop_pv_actual_settlementdate
+        columns: [INTERVAL_DATETIME, TYPE, REGIONID]
