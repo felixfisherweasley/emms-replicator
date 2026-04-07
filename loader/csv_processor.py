@@ -134,12 +134,8 @@ def determine_table(filename):
     if name.startswith('PUBLIC_DVD_'):
         # Remove PUBLIC_DVD_ prefix
         name = name[11:]  # len('PUBLIC_DVD_') = 11
-        # Remove the date suffix (YYYYMMDD or YYYYMMDDHHMM)
-        parts = name.split('_')
-        if parts:
-            table_part = parts[0]  # Gets the table name before date
-        else:
-            table_part = name
+        # Remove trailing date suffix only (e.g., _202407010000), preserving underscores in table name.
+        table_part = re.sub(r'_\d{8,12}$', '', name)
     elif 'PUBLIC_ARCHIVE#' in name:
         parts = name.split('#')
         if len(parts) > 1:
