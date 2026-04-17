@@ -19,7 +19,32 @@ tables:
 sources:
   current: https://nemweb.com.au/Reports/Current/
   archive: https://nemweb.com.au/Reports/ARCHIVE/
-  data_archive_base: https://nemweb.com.au/Data_Archive/Wholesale_Electricity/MMSDM/
+  mmsdm_base: https://nemweb.com.au/Data_Archive/Wholesale_Electricity/MMSDM/
+
+# Optional feed mapping for NEMWeb Archive URLs where one bundle zip can contain many tables.
+# Each feed can map to one or more logical tables so month-level skip checks can still work.
+# include_patterns are optional filename substrings to filter relevant bundle zips on that feed.
+archive_feeds:
+  # - name: dispatch_archive
+  #   url: https://nemweb.com.au/Reports/ARCHIVE/Dispatch/
+  #   tables: [DISPATCHPRICE, DISPATCHREGIONSUM, DISPATCHINTERCONNECTORRES]
+  #   include_patterns: [DISPATCH]
+  # - name: trading_archive
+  #   url: https://nemweb.com.au/Reports/ARCHIVE/Trading/
+  #   tables: [TRADINGPRICE]
+  #   include_patterns: [TRADING]
+
+# Optional feed mapping for NEMWeb Current URLs.
+# Use specific subdirectories where zip files are published.
+current_feeds:
+  # - name: dispatchis
+  #   url: https://nemweb.com.au/Reports/Current/DispatchIS_Reports/
+  #   tables: [DISPATCHPRICE, DISPATCHREGIONSUM, DISPATCHINTERCONNECTORRES]
+  #   include_patterns: [DISPATCH]
+  # - name: rooftop_actual
+  #   url: https://nemweb.com.au/Reports/Current/ROOFTOP_PV/ACTUAL/
+  #   tables: [ROOFTOP_PV_ACTUAL]
+  #   include_patterns: [ROOFTOP, ACTUAL]
 
 data_directory: ./data
 log_directory: ./logs
@@ -28,13 +53,17 @@ tracking_file: ./data/loaded_tracking.csv
 batcher:
   download_dir: ./data/downloads
   extract_dir: ./data/extracted
-  start_year: 2020
-  end_year: 2025
-  months: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+  start_year: 2026
+  end_year: 2026
+  months: [1, 2, 3]
+  current_poll_interval_seconds: 300
+  # Operational mode is selected at runtime via --source.
+  # Supported: mmsdm (historical), archive (feed-mapped backfill), current (live polling).
 
 loader:
   scan_dir: ./data/extracted
   processed_dir: ./data/processed
+  poll_interval_seconds: 30
 
 # Optional table model metadata for key/index creation on first table creation.
 # Fill these from the AEMO data model report.

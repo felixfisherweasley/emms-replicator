@@ -4,3 +4,4 @@ __pycache__/
 data/
 logs/
 config/config.yaml  # if contains secrets
+one_time_scripts/

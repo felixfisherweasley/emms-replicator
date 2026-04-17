@@ -35,11 +35,24 @@ The following tables are targeted for download and loading:
 
 ## Usage
 
-- Run both batcher and loader: `python main.py`
-- Batcher only: `python main.py --batcher` or `python scripts/run_batcher.py`
-- Loader only: `python main.py --loader` or `python scripts/run_loader.py`
+- One-shot orchestration (legacy convenience): `python main.py --source mmsdm`
+- One-shot batcher by source:
+	- `python scripts/run_batcher_mmsdm.py`
+	- `python scripts/run_batcher_archive.py`
+	- `python scripts/run_batcher.py --source mmsdm`
+	- `python scripts/run_batcher.py --source archive`
+- Continuous current-source batcher poller:
+	- `python scripts/run_batcher_current.py`
+	- `python scripts/run_batcher_current.py --interval-seconds 120`
+- Loader:
+	- One-shot: `python scripts/run_loader.py`
+	- Continuous service: `python scripts/run_loader_service.py`
+	- Continuous service custom interval: `python scripts/run_loader_service.py --interval-seconds 15`
 
-Currently, the batcher focuses on scraping the Data Model Archive (source 3) for historical data from 2016-2025.
+Notes:
+- Sources are intentionally run one-at-a-time so they can be scheduled at different frequencies.
+- `mmsdm` and `archive` are backfill-oriented.
+- `current` is intended for live polling against configured `current_feeds` URLs.
 
 ## Project Structure
 

@@ -14,6 +14,28 @@ def load_config():
         return yaml.safe_load(file)
 
 
+def extract_year_month_from_text(text):
+    decoded_text = unquote(str(text).upper())
+    for i in range(len(decoded_text) - 7):
+        candidate = decoded_text[i:i + 8]
+        if candidate.isdigit():
+            year = int(candidate[:4])
+            month = int(candidate[4:6])
+            if 1 <= month <= 12:
+                return year, month
+    return None, None
+
+
+def in_configured_range(year, month, start_year, end_year, months):
+    if year is None or month is None:
+        return True
+    if not (start_year <= year <= end_year):
+        return False
+    if month not in months:
+        return False
+    return True
+
+
 def has_local_month_file(existing_files_upper, table_upper, year, month):
     yyyymm = f"{year}{month:02d}"
     dvd_prefix = f"PUBLIC_DVD_{table_upper}_"
@@ -53,14 +75,14 @@ def download_zip(url, dest_dir):
         logger.error(f"Error downloading {url}: {e}")
         return None
 
-def scrape_data_archive(tables):
+def scrape_mmsdm(tables):
     config = load_config()
     download_dir = config['batcher']['download_dir']
     start_year = config['batcher']['start_year']
     end_year = config['batcher']['end_year']
     months = config['batcher'].get('months', list(range(1, 13)))  # Default all months
     os.makedirs(download_dir, exist_ok=True)
-    base_url = config['sources']['data_archive_base']
+    base_url = config['sources']['mmsdm_base']
 
     try:
         tracking_df = get_tracking_dataframe()
@@ -133,7 +155,157 @@ def scrape_data_archive(tables):
             except Exception as e:
                 logger.error(f"Error scraping {month_url}: {e}")
 
-def download_all_zips():
+
+def scrape_nemweb_archive_feeds(tables):
+    config = load_config()
+    download_dir = config['batcher']['download_dir']
+    start_year = config['batcher']['start_year']
+    end_year = config['batcher']['end_year']
+    months = config['batcher'].get('months', list(range(1, 13)))
+    archive_feeds = config.get('archive_feeds', [])
+
+    if not archive_feeds:
+        return
+
+    try:
+        tracking_df = get_tracking_dataframe()
+        loaded_lookup = {
+            (str(row['table_name']).lower(), int(row['year']), int(row['month']))
+            for _, row in tracking_df.iterrows()
+        }
+    except Exception:
+        loaded_lookup = set()
+
+    def already_loaded(table_name, year, month):
+        if year is None or month is None:
+            return False
+        return (table_name.lower(), year, month) in loaded_lookup
+
+    for feed in archive_feeds:
+        feed_name = feed.get('name', 'archive_feed')
+        feed_url = feed.get('url')
+        feed_tables = [str(t).upper() for t in feed.get('tables', [])]
+        include_patterns = [str(p).upper() for p in feed.get('include_patterns', [])]
+        if not feed_url:
+            logger.warning(f"Skipping archive feed without URL: {feed_name}")
+            continue
+
+        logger.info(f"Scraping archive feed {feed_name}: {feed_url}")
+        try:
+            response = requests.get(feed_url, timeout=30)
+            if response.status_code != 200:
+                logger.warning(f"Failed to access {feed_url}: {response.status_code}")
+                continue
+
+            soup = BeautifulSoup(response.content, 'html.parser')
+            links = soup.find_all('a', href=True)
+            for link in links:
+                href = link['href']
+                if not href.lower().endswith('.zip'):
+                    continue
+
+                zip_url = urljoin(feed_url, href)
+                decoded_href = unquote(href)
+                filename_upper = decoded_href.split('/')[-1].upper()
+
+                # Optional per-feed filename filters for ambiguous archive bundle names.
+                if include_patterns and not any(pat in filename_upper for pat in include_patterns):
+                    continue
+
+                file_year, file_month = extract_year_month_from_text(filename_upper)
+                if not in_configured_range(file_year, file_month, start_year, end_year, months):
+                    continue
+
+                # If all mapped tables for this feed are already loaded in that month, skip bundle download.
+                if feed_tables and file_year and file_month:
+                    if all(already_loaded(tbl, file_year, file_month) for tbl in feed_tables):
+                        logger.info(
+                            f"Skipping {filename_upper} - mapped tables already loaded for {file_year}/{file_month:02d}"
+                        )
+                        continue
+
+                # If feed has no explicit table mapping, use configured tables as coarse fallback.
+                if not feed_tables and file_year and file_month:
+                    if all(already_loaded(tbl, file_year, file_month) for tbl in tables):
+                        logger.info(
+                            f"Skipping {filename_upper} - all configured tables already loaded for {file_year}/{file_month:02d}"
+                        )
+                        continue
+
+                download_zip(zip_url, download_dir)
+        except Exception as e:
+            logger.error(f"Error scraping archive feed {feed_name} ({feed_url}): {e}")
+
+
+def scrape_nemweb_current_feeds(tables):
+    config = load_config()
+    download_dir = config['batcher']['download_dir']
+    current_feeds = config.get('current_feeds', [])
+    fallback_current_url = config.get('sources', {}).get('current')
+
+    if not current_feeds and fallback_current_url:
+        current_feeds = [
+            {
+                'name': 'current_root',
+                'url': fallback_current_url,
+                'tables': tables,
+                'include_patterns': []
+            }
+        ]
+
+    if not current_feeds:
+        logger.warning("No current feeds configured; skipping current source")
+        return
+
+    os.makedirs(download_dir, exist_ok=True)
+
+    for feed in current_feeds:
+        feed_name = feed.get('name', 'current_feed')
+        feed_url = feed.get('url')
+        include_patterns = [str(p).upper() for p in feed.get('include_patterns', [])]
+        if not feed_url:
+            logger.warning(f"Skipping current feed without URL: {feed_name}")
+            continue
+
+        logger.info(f"Scraping current feed {feed_name}: {feed_url}")
+        try:
+            response = requests.get(feed_url, timeout=30)
+            if response.status_code != 200:
+                logger.warning(f"Failed to access {feed_url}: {response.status_code}")
+                continue
+
+            soup = BeautifulSoup(response.content, 'html.parser')
+            links = soup.find_all('a', href=True)
+            for link in links:
+                href = link['href']
+                if not href.lower().endswith('.zip'):
+                    continue
+
+                zip_url = urljoin(feed_url, href)
+                decoded_href = unquote(href)
+                filename_upper = decoded_href.split('/')[-1].upper()
+
+                # Optional filter for noisy feed directories.
+                if include_patterns and not any(pat in filename_upper for pat in include_patterns):
+                    continue
+
+                download_zip(zip_url, download_dir)
+        except Exception as e:
+            logger.error(f"Error scraping current feed {feed_name} ({feed_url}): {e}")
+
+
+def download_all_zips(source='mmsdm'):
     config = load_config()
     tables = config['tables']
-    scrape_data_archive(tables)
+    source_normalized = str(source).strip().lower()
+
+    if source_normalized == 'mmsdm':
+        scrape_mmsdm(tables)
+    elif source_normalized == 'archive':
+        scrape_nemweb_archive_feeds(tables)
+    elif source_normalized == 'current':
+        scrape_nemweb_current_feeds(tables)
+    else:
+        raise ValueError(
+            f"Unsupported source '{source}'. Expected one of: mmsdm, archive, current"
+        )

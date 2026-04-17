@@ -23,14 +23,22 @@ def extract_zip(zip_path, extract_to):
     logger.info(f"Extracted {zip_path} to {extract_to}")
 
 def extract_nested_zips(directory):
-    for root, dirs, files in os.walk(directory):
-        for file in files:
-            if file.endswith('.zip'):
-                zip_path = os.path.join(root, file)
-                extract_zip(zip_path, root)
-                os.remove(zip_path)  # remove after extract
+    # Keep extracting recursively until no nested zip files remain.
+    while True:
+        nested_zip_paths = []
+        for root, dirs, files in os.walk(directory):
+            for file in files:
+                if file.lower().endswith('.zip'):
+                    nested_zip_paths.append(os.path.join(root, file))
 
-def extract_all():
+        if not nested_zip_paths:
+            break
+
+        for zip_path in nested_zip_paths:
+            extract_zip(zip_path, os.path.dirname(zip_path))
+            os.remove(zip_path)  # remove after extract
+
+def extract_all(clear_first=False):
     config = load_config()
     download_dir = config['batcher']['download_dir']
     extract_dir = config['batcher']['extract_dir']
@@ -38,10 +46,16 @@ def extract_all():
     end_year = config['batcher']['end_year']
     months = config['batcher'].get('months', list(range(1, 13)))
     
-    clear_directory(extract_dir)
+    if clear_first:
+        clear_directory(extract_dir)
+    else:
+        os.makedirs(extract_dir, exist_ok=True)
     
-    for file in os.listdir(download_dir):
-        if file.endswith('.zip'):
+    for root, dirs, files in os.walk(download_dir):
+        for file in files:
+            if not file.lower().endswith('.zip'):
+                continue
+
             # Decode URL-encoded filename for checking (2026 data uses %23 for #)
             decoded_file = unquote(file)
             filename = decoded_file.upper()
@@ -67,8 +81,9 @@ def extract_all():
                 if file_month not in months:
                     logger.info(f"Skipping extraction of {file} - month {file_month} not in configured months")
                     continue
-            
-            zip_path = os.path.join(download_dir, file)
+
+            zip_path = os.path.join(root, file)
             extract_zip(zip_path, extract_dir)
+            os.remove(zip_path)  # remove source zip after extraction to avoid reprocessing
     
     extract_nested_zips(extract_dir)
